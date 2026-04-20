@@ -125,7 +125,10 @@ static inline void agnocast_eventfd_signal(struct eventfd_ctx * ctx)
 #endif
 
 // Stack buffer size for notify_ctx pointer collection in publish_msg.
-// Heap allocation is used as fallback when subscriber count exceeds this.
+// Sized to cover common ROS 2 fan-out (typical N <= 10, with outliers like
+// /tf reaching 100+) while keeping stack usage bounded: 64 * sizeof(void *) =
+// 512 B, well within the 16 KB default kernel stack. Heap allocation via
+// kcalloc(GFP_ATOMIC) is used as fallback when subscriber count exceeds this.
 #define NOTIFY_CTX_STACK_SIZE 64
 
 struct topic_struct
