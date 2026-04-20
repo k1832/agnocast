@@ -1,9 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause */
 #pragma once
 
 #include "agnocast.h"
 #include "agnocast_memory_allocator.h"
 
 #include <linux/device.h>
+#include <linux/eventfd.h>
 #include <linux/fs.h>
 #include <linux/hashtable.h>
 #include <linux/kernel.h>
@@ -98,8 +100,36 @@ struct subscriber_info
   bool ignore_local_publications;
   bool need_mmap_update;
   bool is_bridge;
+  struct eventfd_ctx * notify_ctx;  // eventfd for publish notifications (NULL for take_sub)
   struct hlist_node node;
 };
+
+// Helper to copy a name_info string from userspace to a kernel stack buffer.
+// Returns 0 on success, -EINVAL if too long, -EFAULT on copy failure.
+static inline long copy_name_from_user(char * dst, size_t dst_size, const struct name_info * src)
+{
+  if (src->len >= dst_size) return -EINVAL;
+  if (copy_from_user(dst, (const char __user *)src->ptr, src->len)) return -EFAULT;
+  dst[src->len] = '\0';
+  return 0;
+}
+
+// eventfd_signal API changed in 6.8: single-arg (before: two-arg with count)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
+static inline void agnocast_eventfd_signal(struct eventfd_ctx * ctx)
+{
+  eventfd_signal(ctx, 1);
+}
+#else
+#define agnocast_eventfd_signal(ctx) eventfd_signal(ctx)
+#endif
+
+// Stack buffer size for notify_ctx pointer collection in publish_msg.
+// Sized to cover common ROS 2 fan-out (typical N <= 10, with outliers like
+// /tf reaching 100+) while keeping stack usage bounded: 64 * sizeof(void *) =
+// 512 B, well within the 16 KB default kernel stack. Heap allocation via
+// kcalloc(GFP_ATOMIC) is used as fallback when subscriber count exceeds this.
+#define NOTIFY_CTX_STACK_SIZE 64
 
 struct topic_struct
 {
