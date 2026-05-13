@@ -47,6 +47,93 @@ static int topics_show(struct seq_file * s, void * v)
   return 0;
 }
 
+// Emit `ipc_ns_inode pid node_name` rows from every publisher / subscriber,
+// deduplicating against everything emitted so far so each (ipc_ns, pid,
+// node_name) tuple shows up at most once. Hashtable iteration order isn't
+// stable, but every actual node is reported exactly once.
+struct seen_node
+{
+  unsigned int inum;
+  pid_t pid;
+  const char * node_name;
+};
+
+static bool seen_contains(
+  const struct seen_node * seen, size_t count, unsigned int inum, pid_t pid,
+  const char * node_name)
+{
+  size_t i;
+  if (!node_name) return false;
+  for (i = 0; i < count; i++) {
+    if (
+      seen[i].inum == inum && seen[i].pid == pid && seen[i].node_name &&
+      strcmp(seen[i].node_name, node_name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+#define MAX_SEEN_NODES 4096
+
+static int nodes_show(struct seq_file * s, void * v)
+{
+  struct topic_wrapper * wrapper;
+  int bkt_topic;
+  struct seen_node * seen;
+  size_t seen_count = 0;
+
+  seq_printf(s, "# schema_version=%u\n", AGNOCAST_PROC_SCHEMA_VERSION);
+  seq_puts(s, "# ipc_ns_inode pid node_name\n");
+
+  seen = kvmalloc(sizeof(*seen) * MAX_SEEN_NODES, GFP_KERNEL);
+  if (!seen) return -ENOMEM;
+
+  down_read(&global_htables_rwsem);
+
+  hash_for_each(topic_hashtable, bkt_topic, wrapper, node)
+  {
+    struct publisher_info * pub_info;
+    struct subscriber_info * sub_info;
+    int bkt;
+    unsigned int inum = ipc_ns_inode(wrapper->ipc_ns);
+
+    down_read(&wrapper->topic_rwsem);
+
+    hash_for_each(wrapper->topic.pub_info_htable, bkt, pub_info, node)
+    {
+      if (!pub_info->node_name) continue;
+      if (seen_contains(seen, seen_count, inum, pub_info->pid, pub_info->node_name)) continue;
+      if (seen_count < MAX_SEEN_NODES) {
+        seen[seen_count].inum = inum;
+        seen[seen_count].pid = pub_info->pid;
+        seen[seen_count].node_name = pub_info->node_name;
+        seen_count++;
+      }
+      seq_printf(s, "%u %d %s\n", inum, pub_info->pid, pub_info->node_name);
+    }
+
+    hash_for_each(wrapper->topic.sub_info_htable, bkt, sub_info, node)
+    {
+      if (!sub_info->node_name) continue;
+      if (seen_contains(seen, seen_count, inum, sub_info->pid, sub_info->node_name)) continue;
+      if (seen_count < MAX_SEEN_NODES) {
+        seen[seen_count].inum = inum;
+        seen[seen_count].pid = sub_info->pid;
+        seen[seen_count].node_name = sub_info->node_name;
+        seen_count++;
+      }
+      seq_printf(s, "%u %d %s\n", inum, sub_info->pid, sub_info->node_name);
+    }
+
+    up_read(&wrapper->topic_rwsem);
+  }
+
+  up_read(&global_htables_rwsem);
+  kvfree(seen);
+  return 0;
+}
+
 static int topic_info_show(struct seq_file * s, void * v)
 {
   struct topic_wrapper * wrapper;
@@ -104,6 +191,7 @@ int agnocast_init_procfs(void)
   }
 
   if (!proc_create_single("topics", 0444, agnocast_proc_dir, topics_show)) goto err;
+  if (!proc_create_single("nodes", 0444, agnocast_proc_dir, nodes_show)) goto err;
   if (!proc_create_single("topic_info", 0444, agnocast_proc_dir, topic_info_show)) goto err;
 
   return 0;
