@@ -41,6 +41,10 @@ class TopicInfoAgnocastVerb(VerbExtension):
         parser.add_argument(
             '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
             help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
+        parser.add_argument(
+            '--include-stale', action='store_true',
+            help='Include discovery announcements older than the freshness threshold '
+                 '(default %.0fs).' % _discovery.DEFAULT_STALE_AFTER_SEC)
         arg.completer = TopicNameCompleter(
             include_hidden_topics_key='include_hidden_topics')
 
@@ -194,7 +198,8 @@ class TopicInfoAgnocastVerb(VerbExtension):
             # Layer 2: pull in endpoints from other ECUs (and our daemon, if
             # it adds anything not seen via procfs) for the requested topic.
             timeout_sec = max(0.0, args.timeout_ms / 1000.0)
-            announcements = _discovery.collect_announcements(node, timeout_sec)
+            announcements = _discovery.collect_announcements(
+                node, timeout_sec, include_stale=args.include_stale)
             discovery_topics = _discovery.merge_topics(announcements)
             local_sub_keys = {(r['node_name'], r['is_bridge']) for r in sub_topic_info_rets}
             local_pub_keys = {(r['node_name'], r['is_bridge']) for r in pub_topic_info_rets}

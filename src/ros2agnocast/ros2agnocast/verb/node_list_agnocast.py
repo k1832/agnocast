@@ -6,6 +6,8 @@ from ros2cli.node.strategy import NodeStrategy
 from ros2node.api import get_node_names
 from ros2topic.verb import VerbExtension
 
+from ros2agnocast import discovery as _discovery
+
 class TopicInfoRet(ctypes.Structure):
     _fields_ = [
         ("node_name", ctypes.c_char * 256),
@@ -30,6 +32,13 @@ class ListAgnocastVerb(VerbExtension):
         parser.add_argument(
             '-d', '--debug', action='store_true',
             help='Include internal bridge nodes (agnocast_bridge_node_*) in the output')
+        parser.add_argument(
+            '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
+            help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
+        parser.add_argument(
+            '--include-stale', action='store_true',
+            help='Include discovery announcements older than the freshness threshold '
+                 '(default %.0fs).' % _discovery.DEFAULT_STALE_AFTER_SEC)
 
     def main(self, *, args):
         with NodeStrategy(None) as node:
@@ -79,11 +88,21 @@ class ListAgnocastVerb(VerbExtension):
             if topic_count.value != 0:
                 lib.free_agnocast_topics(agnocast_topic_array, topic_count)
 
-            # Get node names which contains Agnocast topics
+            # Get node names which contains Agnocast topics (NS-scoped path).
             agnocast_node_name = set()
             for topic in agnocast_topics:
                 agnocast_node_name = agnocast_node_name | get_node_name_set(topic)
-            
+
+            # Cross-NS / cross-ECU: derive nodes directly from procfs rows and
+            # Layer 2 discovery announcements (see §2.3 goal #1).
+            cross_ns_rows = _discovery.parse_proc_topic_info()
+            timeout_sec = max(0.0, args.timeout_ms / 1000.0)
+            announcements = _discovery.collect_announcements(
+                node, timeout_sec, include_stale=args.include_stale)
+            cross_ns_rows.extend(_discovery.discovery_to_rows(announcements))
+            for n in _discovery.derive_node_topics_from_rows(cross_ns_rows):
+                agnocast_node_name.add(n)
+
             # Get ros2 node names
             ros2_node_name_list = get_node_names(node=node, include_hidden_nodes=args.all)
             ros2_node_name = {n.full_name for n in ros2_node_name_list}

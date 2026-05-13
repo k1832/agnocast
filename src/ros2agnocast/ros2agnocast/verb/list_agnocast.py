@@ -30,6 +30,10 @@ class ListAgnocastVerb(VerbExtension):
         parser.add_argument(
             '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
             help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
+        parser.add_argument(
+            '--include-stale', action='store_true',
+            help='Include discovery announcements older than the freshness threshold '
+                 '(default %.0fs).' % _discovery.DEFAULT_STALE_AFTER_SEC)
 
     def main(self, *, args):
         with NodeStrategy(None) as node:
@@ -149,7 +153,8 @@ class ListAgnocastVerb(VerbExtension):
             # ECUs (and our own daemon, if running). Adds topics that procfs
             # can't see because they live on a different host.
             timeout_sec = max(0.0, args.timeout_ms / 1000.0)
-            announcements = _discovery.collect_announcements(node, timeout_sec)
+            announcements = _discovery.collect_announcements(
+                node, timeout_sec, include_stale=args.include_stale)
             discovery_topics = _discovery.merge_topics(announcements)
             for name in discovery_topics:
                 if name.startswith('/AGNOCAST_SRV_'):
