@@ -47,6 +47,13 @@ class NodeInfoAgnocastVerb(VerbExtension):
         parser.add_argument(
             'node_name',
             help='Fully qualified node name to request information with Agnocast topics')
+        parser.add_argument(
+            '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
+            help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
+        parser.add_argument(
+            '--include-stale', action='store_true',
+            help='Include discovery announcements older than the freshness threshold '
+                 '(default %.0fs).' % _discovery.DEFAULT_STALE_AFTER_SEC)
 
     def main(self, *, args):
         node_name = args.node_name
@@ -191,11 +198,16 @@ class NodeInfoAgnocastVerb(VerbExtension):
             node_name_bytes = node_name.encode('utf-8')
             agnocast_subscribers, agnocast_publishers, agnocast_servers, agnocast_clients = get_agnocast_node_topics(node_name_bytes)
 
-            # Cross-NS: fold in topics from /proc/agnocast/ so the node is
-            # visible regardless of which IPC namespace it lives in on this
-            # ECU. Service/action request/response topics get the same
-            # classification as the NS-scoped path.
+            # Cross-NS / cross-ECU: fold in topics from procfs and from Layer
+            # 2 announcements so the node is visible regardless of which IPC
+            # namespace or ECU it lives in (§2.3 goal #1). Service/action
+            # request/response topics get the same classification as the
+            # NS-scoped path.
             cross_ns_rows = _discovery.parse_proc_topic_info()
+            timeout_sec = max(0.0, args.timeout_ms / 1000.0)
+            announcements = _discovery.collect_announcements(
+                node, timeout_sec, include_stale=args.include_stale)
+            cross_ns_rows.extend(_discovery.discovery_to_rows(announcements))
 
             agnocast_sub_set = set(agnocast_subscribers)
             agnocast_pub_set = set(agnocast_publishers)

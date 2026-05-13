@@ -4,6 +4,8 @@ from ros2cli.node.strategy import NodeStrategy
 from ros2topic.api import TopicNameCompleter
 from ros2node.verb import VerbExtension
 
+from ros2agnocast import discovery as _discovery
+
 class TopicInfoRet(ctypes.Structure):
     _fields_ = [
         ("node_name", ctypes.c_char * 256),
@@ -36,6 +38,13 @@ class TopicInfoAgnocastVerb(VerbExtension):
             '-d',
             action='store_true',
             help='Include internal bridge nodes (agnocast_bridge_node_*) in the output')
+        parser.add_argument(
+            '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
+            help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
+        parser.add_argument(
+            '--include-stale', action='store_true',
+            help='Include discovery announcements older than the freshness threshold '
+                 '(default %.0fs).' % _discovery.DEFAULT_STALE_AFTER_SEC)
         arg.completer = TopicNameCompleter(
             include_hidden_topics_key='include_hidden_topics')
 
@@ -185,6 +194,37 @@ class TopicInfoAgnocastVerb(VerbExtension):
                 })
             if pub_topic_info_ret_count.value != 0 and pub_topic_info_ret_array is not None:
                 lib.free_agnocast_topic_info_ret(pub_topic_info_ret_array)
+
+            # Pull in endpoints from other ECUs (and our daemon, if
+            # it adds anything not seen via procfs) for the requested topic.
+            timeout_sec = max(0.0, args.timeout_ms / 1000.0)
+            announcements = _discovery.collect_announcements(
+                node, timeout_sec, include_stale=args.include_stale)
+            discovery_topics = _discovery.merge_topics(announcements)
+            local_sub_keys = {(r['node_name'], r['is_bridge']) for r in sub_topic_info_rets}
+            local_pub_keys = {(r['node_name'], r['is_bridge']) for r in pub_topic_info_rets}
+            for ep in discovery_topics.get(topic_name, _discovery.TopicEntry(topic_name, [], [])).subscribers:
+                key = (ep.node_name, ep.is_bridge)
+                if key in local_sub_keys:
+                    continue
+                local_sub_keys.add(key)
+                sub_topic_info_rets.append({
+                    "node_name": ep.node_name,
+                    "qos_depth": ep.qos_depth,
+                    "qos_is_transient_local": ep.qos_is_transient_local,
+                    "is_bridge": ep.is_bridge,
+                })
+            for ep in discovery_topics.get(topic_name, _discovery.TopicEntry(topic_name, [], [])).publishers:
+                key = (ep.node_name, ep.is_bridge)
+                if key in local_pub_keys:
+                    continue
+                local_pub_keys.add(key)
+                pub_topic_info_rets.append({
+                    "node_name": ep.node_name,
+                    "qos_depth": ep.qos_depth,
+                    "qos_is_transient_local": ep.qos_is_transient_local,
+                    "is_bridge": ep.is_bridge,
+                })
 
             # get bridge node names
             bridge_node_names = set()
