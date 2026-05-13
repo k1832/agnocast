@@ -1,0 +1,17 @@
+[Unit]
+Description=Agnocast discovery agent (per-ECU, F3 preview)
+After=network.target
+
+[Service]
+Type=simple
+# ROS_DISTRO and ROS_DOMAIN_ID must be supplied via /etc/default/agnocast-discovery
+# (or an EnvironmentFile=). Source the ROS overlay and run the agent.
+EnvironmentFile=-/etc/default/agnocast-discovery
+ExecStart=/bin/bash -lc 'source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && \
+  if [ -n "${AGNOCAST_OVERLAY_SETUP:-}" ]; then source "${AGNOCAST_OVERLAY_SETUP}"; fi && \
+  exec ros2 run ros2agnocast_discovery_agent discovery_agent'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
