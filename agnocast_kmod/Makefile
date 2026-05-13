@@ -8,7 +8,8 @@ ifeq ($(KUNIT_BUILD),y)
 	  agnocast_init.o \
 	  agnocast_exit.o \
 	  agnocast_ioctl.o \
-	  agnocast_internal.o
+	  agnocast_internal.o \
+	  agnocast_procfs.o
     include $(src)/agnocast_kunit/Makefile.inc
     ccflags-y += -DKUNIT_BUILD -fprofile-arcs -ftest-coverage
   else
@@ -20,7 +21,8 @@ else
 	agnocast_init.o \
 	agnocast_exit.o \
 	agnocast_ioctl.o \
-	agnocast_internal.o
+	agnocast_internal.o \
+	agnocast_procfs.o
 endif
 
 KERNEL_VERSION ?= $(shell uname -r)
