@@ -1,0 +1,3 @@
+<launch>
+  <node pkg="ros2agnocast_discovery_agent" exec="discovery_agent" name="agnocast_discovery_agent" output="screen"/>
+</launch>

@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+from ros2agnocast_discovery_agent.agent import main
+
+if __name__ == '__main__':
+    main()
