@@ -147,6 +147,9 @@ int agnocast_get_size_sub_info_htable(struct topic_wrapper * wrapper)
   int count = 0;
   struct subscriber_info * sub_info;
   int bkt_sub_info;
+
+  lockdep_assert_held(&wrapper->topic_rwsem);
+
   hash_for_each(wrapper->topic.sub_info_htable, bkt_sub_info, sub_info, node)
   {
     count++;
@@ -159,6 +162,9 @@ int agnocast_get_size_pub_info_htable(struct topic_wrapper * wrapper)
   int count = 0;
   struct publisher_info * pub_info;
   int bkt_pub_info;
+
+  lockdep_assert_held(&wrapper->topic_rwsem);
+
   hash_for_each(wrapper->topic.pub_info_htable, bkt_pub_info, pub_info, node)
   {
     count++;
