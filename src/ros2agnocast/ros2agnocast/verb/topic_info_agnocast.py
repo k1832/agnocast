@@ -135,16 +135,30 @@ class TopicInfoAgnocastVerb(VerbExtension):
             lib.get_agnocast_sub_nodes.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
             lib.get_agnocast_sub_nodes.restype = ctypes.POINTER(TopicInfoRet)
             lib.get_agnocast_pub_nodes.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
-            lib.get_agnocast_pub_nodes.restype = ctypes.POINTER(TopicInfoRet)          
+            lib.get_agnocast_pub_nodes.restype = ctypes.POINTER(TopicInfoRet)
+            lib.get_agnocast_sub_nodes_all_ns.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+            lib.get_agnocast_sub_nodes_all_ns.restype = ctypes.POINTER(TopicInfoRet)
+            lib.get_agnocast_pub_nodes_all_ns.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+            lib.get_agnocast_pub_nodes_all_ns.restype = ctypes.POINTER(TopicInfoRet)
             lib.free_agnocast_topic_info_ret.argtypes = [ctypes.POINTER(TopicInfoRet)]
             lib.free_agnocast_topic_info_ret.restype = None
 
             topic_name = args.topic_name
             topic_name_byte = topic_name.encode('utf-8')
 
+            def query_with_fallback(all_ns_fn, ioctl_fn, topic_name_b, count_out):
+                # Prefer cross-NS view (procfs); fall back to NS-scoped ioctl
+                # when /proc/agnocast/ is absent (older kmod).
+                arr = all_ns_fn(topic_name_b, ctypes.byref(count_out))
+                if not arr:
+                    arr = ioctl_fn(topic_name_b, ctypes.byref(count_out))
+                return arr
+
             # get agnocast sub node list
             sub_topic_info_ret_count = ctypes.c_int()
-            sub_topic_info_ret_array = lib.get_agnocast_sub_nodes(topic_name_byte, ctypes.byref(sub_topic_info_ret_count))
+            sub_topic_info_ret_array = query_with_fallback(
+                lib.get_agnocast_sub_nodes_all_ns, lib.get_agnocast_sub_nodes,
+                topic_name_byte, sub_topic_info_ret_count)
             sub_topic_info_rets = []
             for i in range(sub_topic_info_ret_count.value):
                 sub_topic_info_rets.append({
@@ -158,7 +172,9 @@ class TopicInfoAgnocastVerb(VerbExtension):
 
             # get agnocast pub node list
             pub_topic_info_ret_count = ctypes.c_int()
-            pub_topic_info_ret_array = lib.get_agnocast_pub_nodes(topic_name_byte, ctypes.byref(pub_topic_info_ret_count))
+            pub_topic_info_ret_array = query_with_fallback(
+                lib.get_agnocast_pub_nodes_all_ns, lib.get_agnocast_pub_nodes,
+                topic_name_byte, pub_topic_info_ret_count)
             pub_topic_info_rets = []
             for i in range(pub_topic_info_ret_count.value):
                 pub_topic_info_rets.append({
