@@ -5,6 +5,9 @@ from ros2cli.node.strategy import NodeStrategy
 from ros2node.api import get_node_names
 from ros2topic.verb import VerbExtension
 
+from ros2agnocast import discovery as _discovery
+
+
 def split_fqn(fqn):
     namespace, _, name = fqn.rpartition('/')
     return (namespace or '/'), name
@@ -82,10 +85,16 @@ class ListAgnocastVerb(VerbExtension):
             if topic_count.value != 0:
                 lib.free_agnocast_topics(agnocast_topic_array, topic_count)
 
-            # Get node names which contains Agnocast topics
+            # Get node names which contains Agnocast topics (NS-scoped path).
             agnocast_node_name = set()
             for topic in agnocast_topics:
                 agnocast_node_name = agnocast_node_name | get_node_name_set(topic)
+
+            # Cross-NS: derive nodes directly from /proc/agnocast/ so the
+            # listing matches the full ECU, not just the caller's IPC NS.
+            cross_ns_rows = _discovery.parse_proc_topic_info()
+            for n in _discovery.derive_node_topics_from_rows(cross_ns_rows):
+                agnocast_node_name.add(n)
 
             # TODO(bdm-k): The current impl determines shadow nodes in a heuristic way. We need to
             # invent a deterministic way to identify shadow nodes.

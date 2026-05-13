@@ -9,6 +9,8 @@ from ros2node.api import (
 from ros2topic.api import get_topic_names_and_types
 from ros2node.verb import VerbExtension
 
+from ros2agnocast import discovery as _discovery
+
 class BridgeStatus(Enum):
     NONE = 0
     ROS2_TO_AGNOCAST = 1
@@ -188,6 +190,37 @@ class NodeInfoAgnocastVerb(VerbExtension):
             # Get Agnocast node info directly by node name (2 ioctl calls instead of 2*N)
             node_name_bytes = node_name.encode('utf-8')
             agnocast_subscribers, agnocast_publishers, agnocast_servers, agnocast_clients = get_agnocast_node_topics(node_name_bytes)
+
+            # Cross-NS: fold in topics from /proc/agnocast/ so the node is
+            # visible regardless of which IPC namespace it lives in on this
+            # ECU. Service/action request/response topics get the same
+            # classification as the NS-scoped path.
+            cross_ns_rows = _discovery.parse_proc_topic_info()
+
+            agnocast_sub_set = set(agnocast_subscribers)
+            agnocast_pub_set = set(agnocast_publishers)
+            agnocast_server_set = set(agnocast_servers)
+            agnocast_client_set = set(agnocast_clients)
+            for row in cross_ns_rows:
+                if row['node_name'] != node_name:
+                    continue
+                topic = row['topic_name']
+                service_name = service_name_from_request_topic(topic)
+                if service_name is not None:
+                    agnocast_server_set.add(service_name)
+                    continue
+                service_name = service_name_from_response_topic(topic)
+                if service_name is not None:
+                    agnocast_client_set.add(service_name)
+                    continue
+                if row['direction'] == 'pub':
+                    agnocast_pub_set.add(topic)
+                elif row['direction'] == 'sub':
+                    agnocast_sub_set.add(topic)
+            agnocast_subscribers = sorted(agnocast_sub_set)
+            agnocast_publishers = sorted(agnocast_pub_set)
+            agnocast_servers = agnocast_server_set
+            agnocast_clients = agnocast_client_set
 
             # Get ros2 all node names
             ros2_node_name_list = get_node_names(node=node, include_hidden_nodes=True)
