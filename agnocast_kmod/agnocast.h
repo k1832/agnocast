@@ -361,11 +361,13 @@ union ioctl_topic_info_args {
 int agnocast_init_device(void);
 int agnocast_init_kthread(void);
 int agnocast_init_exit_hook(void);
+int agnocast_init_procfs(void);
 
 void agnocast_exit_free_data(void);
 void agnocast_exit_kthread(void);
 void agnocast_exit_exit_hook(void);
 void agnocast_exit_device(void);
+void agnocast_exit_procfs(void);
 
 int agnocast_ioctl_add_subscriber(
   const char * topic_name, const struct ipc_namespace * ipc_ns, const char * node_name,
