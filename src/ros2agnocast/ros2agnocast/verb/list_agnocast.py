@@ -32,11 +32,20 @@ class ListAgnocastVerb(VerbExtension):
             lib.free_agnocast_topics.argtypes = [ctypes.POINTER(ctypes.POINTER(ctypes.c_char)), ctypes.c_int]
             lib.free_agnocast_topics.restype = None
 
+            # Cross-NS variant via /proc/agnocast/. Returns NULL on old kmod;
+            # caller falls back to the NS-scoped ioctl version above.
+            lib.get_agnocast_topics_all_ns.argtypes = [ctypes.POINTER(ctypes.c_int)]
+            lib.get_agnocast_topics_all_ns.restype = ctypes.POINTER(ctypes.POINTER(ctypes.c_char))
+
             # For bridge detection, we need to get nodes by topic
             lib.get_agnocast_sub_nodes.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
             lib.get_agnocast_sub_nodes.restype = ctypes.POINTER(TopicInfoRet)
             lib.get_agnocast_pub_nodes.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
             lib.get_agnocast_pub_nodes.restype = ctypes.POINTER(TopicInfoRet)
+            lib.get_agnocast_sub_nodes_all_ns.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+            lib.get_agnocast_sub_nodes_all_ns.restype = ctypes.POINTER(TopicInfoRet)
+            lib.get_agnocast_pub_nodes_all_ns.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+            lib.get_agnocast_pub_nodes_all_ns.restype = ctypes.POINTER(TopicInfoRet)
             lib.free_agnocast_topic_info_ret.argtypes = [ctypes.POINTER(TopicInfoRet)]
             lib.free_agnocast_topic_info_ret.restype = None
 
@@ -58,18 +67,31 @@ class ListAgnocastVerb(VerbExtension):
                 has_agnocast_sub = False
                 has_agnocast_pub = False
 
-                with agnocast_info_array(lib.get_agnocast_sub_nodes, name_b) as nodes:
-                    for n in nodes:
-                        if n.is_bridge:
-                            has_sub_bridge = True
-                        else:
-                            has_agnocast_sub = True
-                with agnocast_info_array(lib.get_agnocast_pub_nodes, name_b) as nodes:
-                    for n in nodes:
-                        if n.is_bridge:
-                            has_pub_bridge = True
-                        else:
-                            has_agnocast_pub = True
+                # Prefer cross-NS view (procfs); fall back to NS-scoped ioctl
+                # when /proc/agnocast/ is absent (older kmod).
+                def query_with_fallback(all_ns_fn, ioctl_fn):
+                    count = ctypes.c_int()
+                    array = all_ns_fn(name_b, ctypes.byref(count))
+                    if not array:
+                        array = ioctl_fn(name_b, ctypes.byref(count))
+                    try:
+                        yield from (array[:count.value] if array else [])
+                    finally:
+                        if array:
+                            lib.free_agnocast_topic_info_ret(array)
+
+                for n in query_with_fallback(
+                        lib.get_agnocast_sub_nodes_all_ns, lib.get_agnocast_sub_nodes):
+                    if n.is_bridge:
+                        has_sub_bridge = True
+                    else:
+                        has_agnocast_sub = True
+                for n in query_with_fallback(
+                        lib.get_agnocast_pub_nodes_all_ns, lib.get_agnocast_pub_nodes):
+                    if n.is_bridge:
+                        has_pub_bridge = True
+                    else:
+                        has_agnocast_pub = True
 
                 mapping = {
                     (True, True):   BridgeStatus.BIDIRECTION,
@@ -100,9 +122,12 @@ class ListAgnocastVerb(VerbExtension):
             def remove_service_topic(topic_names):
                 return [name for name in topic_names if not name.startswith('/AGNOCAST_SRV_')]
             
-            # Get Agnocast topics
+            # Get Agnocast topics. Prefer cross-NS (procfs); fall back to
+            # NS-scoped ioctl when /proc/agnocast/ is absent.
             topic_count = ctypes.c_int()
-            agnocast_topic_array = lib.get_agnocast_topics(ctypes.byref(topic_count))
+            agnocast_topic_array = lib.get_agnocast_topics_all_ns(ctypes.byref(topic_count))
+            if not agnocast_topic_array:
+                agnocast_topic_array = lib.get_agnocast_topics(ctypes.byref(topic_count))
             agnocast_topics = []
             for i in range(topic_count.value):
                 topic_ptr = ctypes.cast(agnocast_topic_array[i], ctypes.c_char_p)
@@ -112,7 +137,7 @@ class ListAgnocastVerb(VerbExtension):
                 lib.free_agnocast_topics(agnocast_topic_array, topic_count)
 
             agnocast_topics = remove_service_topic(agnocast_topics)
-            
+
             # Get ros2 topics
             ros2_topics_data = get_topic_names_and_types(node=node)
             ros2_all_topics = set(name for name, _ in ros2_topics_data)
