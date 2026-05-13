@@ -26,21 +26,16 @@ static int topics_show(struct seq_file * s, void * v)
 
   hash_for_each(topic_hashtable, bkt_topic, wrapper, node)
   {
-    uint32_t pub_count = 0;
-    uint32_t sub_count = 0;
-    struct publisher_info * pub_info;
-    struct subscriber_info * sub_info;
-    int bkt;
+    int pub_count;
+    int sub_count;
 
     down_read(&wrapper->topic_rwsem);
-
-    hash_for_each(wrapper->topic.pub_info_htable, bkt, pub_info, node) pub_count++;
-    hash_for_each(wrapper->topic.sub_info_htable, bkt, sub_info, node) sub_count++;
-
+    pub_count = agnocast_get_size_pub_info_htable(wrapper);
+    sub_count = agnocast_get_size_sub_info_htable(wrapper);
     up_read(&wrapper->topic_rwsem);
 
     seq_printf(
-      s, "%u %s %u %u\n", ipc_ns_inode(wrapper->ipc_ns), wrapper->key, pub_count, sub_count);
+      s, "%u %s %d %d\n", ipc_ns_inode(wrapper->ipc_ns), wrapper->key, pub_count, sub_count);
   }
 
   up_read(&global_htables_rwsem);
