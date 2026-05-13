@@ -5,6 +5,8 @@ from ros2cli.node.strategy import NodeStrategy
 from ros2topic.api import get_topic_names_and_types
 from ros2topic.verb import VerbExtension
 
+from ros2agnocast import discovery as _discovery
+
 class BridgeStatus(Enum):
     NONE = 0
     ROS2_TO_AGNOCAST = 1
@@ -23,6 +25,11 @@ class TopicInfoRet(ctypes.Structure):
     ]
 class ListAgnocastVerb(VerbExtension):
     "Output a list of available topics including Agnocast"
+
+    def add_arguments(self, parser, cli_name):
+        parser.add_argument(
+            '--timeout-ms', type=int, default=int(_discovery.DEFAULT_TIMEOUT_SEC * 1000),
+            help='How long to collect /_agnocast_discovery announcements (default %(default)dms).')
 
     def main(self, *, args):
         with NodeStrategy(None) as node:
@@ -137,7 +144,19 @@ class ListAgnocastVerb(VerbExtension):
                 lib.free_agnocast_topics(agnocast_topic_array, topic_count)
 
             agnocast_topics = remove_service_topic(agnocast_topics)
-            
+
+            # Layer 2: collect /_agnocast_discovery announcements from other
+            # ECUs (and our own daemon, if running). Adds topics that procfs
+            # can't see because they live on a different host.
+            timeout_sec = max(0.0, args.timeout_ms / 1000.0)
+            announcements = _discovery.collect_announcements(node, timeout_sec)
+            discovery_topics = _discovery.merge_topics(announcements)
+            for name in discovery_topics:
+                if name.startswith('/AGNOCAST_SRV_'):
+                    continue
+                if name not in agnocast_topics:
+                    agnocast_topics.append(name)
+
             # Get ros2 topics
             ros2_topics_data = get_topic_names_and_types(node=node)
             ros2_all_topics = set(name for name, _ in ros2_topics_data)
