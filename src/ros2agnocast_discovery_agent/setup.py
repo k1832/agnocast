@@ -12,12 +12,11 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name + '/launch', ['launch/discovery_agent.launch.xml']),
         ('share/' + package_name + '/systemd', ['systemd/agnocast-discovery-agent.service']),
+        # Install the runnable wrapper into the lib/<pkg>/ path where `ros2
+        # run` looks for executables. ament_python in older releases doesn't
+        # consistently move `console_scripts` here, so we do it explicitly.
+        ('lib/' + package_name, ['scripts/discovery_agent']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    entry_points={
-        'console_scripts': [
-            'discovery_agent = ros2agnocast_discovery_agent.agent:main',
-        ],
-    },
 )
