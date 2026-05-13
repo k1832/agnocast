@@ -195,7 +195,7 @@ class TopicInfoAgnocastVerb(VerbExtension):
             if pub_topic_info_ret_count.value != 0 and pub_topic_info_ret_array is not None:
                 lib.free_agnocast_topic_info_ret(pub_topic_info_ret_array)
 
-            # Layer 2: pull in endpoints from other ECUs (and our daemon, if
+            # Pull in endpoints from other ECUs (and our daemon, if
             # it adds anything not seen via procfs) for the requested topic.
             timeout_sec = max(0.0, args.timeout_ms / 1000.0)
             announcements = _discovery.collect_announcements(

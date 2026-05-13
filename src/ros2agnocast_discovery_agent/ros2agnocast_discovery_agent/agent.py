@@ -1,8 +1,9 @@
 """Discovery agent: read /proc/agnocast/ and announce per-NS state on DDS.
 
-See CROSS_NS_OBSERVABILITY_ja.md §5.3 / §10. One daemon per ECU in the
-F3 preview implementation; later folded into the per-IPC daemon in Epic
-T4DEV-52095.
+One daemon per ECU. Reads the kmod-side procfs entries, groups rows by IPC
+namespace, and publishes one AgnocastDaemonState per namespace to
+/_agnocast_discovery so ros2agnocast CLI clients can aggregate across IPC
+namespaces and ECUs.
 """
 
 import os
@@ -33,7 +34,7 @@ DISCOVERY_TOPIC = '/_agnocast_discovery'
 
 POLL_INTERVAL_SEC = 1.0
 HEARTBEAT_INTERVAL_SEC = 10.0  # 0.1 Hz heartbeat
-LIVELINESS_LEASE_SEC = 30.0    # CROSS_NS_OBSERVABILITY_ja.md §10.3
+LIVELINESS_LEASE_SEC = 30.0    # CLI-side subscriber lease must match
 
 
 def read_machine_id() -> str:
@@ -103,7 +104,7 @@ def build_messages(host_uuid: str, hostname: str, now) -> List[AgnocastDaemonSta
     for (inum, topic_name), bucket in grouped.items():
         per_ns[inum].append(AgnocastTopic(
             topic_name=topic_name,
-            domain_id=0,  # F2 pending; see msg comment.
+            domain_id=0,  # Reserved; see AgnocastTopic.msg.
             publishers=bucket['publishers'],
             subscribers=bucket['subscribers'],
         ))

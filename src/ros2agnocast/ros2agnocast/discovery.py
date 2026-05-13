@@ -1,8 +1,9 @@
-"""Layer 2 CLI helper: subscribe to /_agnocast_discovery and collect.
+"""CLI helper for the cross-NS / cross-ECU discovery layer.
 
-Imports of the discovery msgs are deferred so the CLI keeps working if the
-discovery package isn't installed (e.g. older deployments without F3 Phase B).
-See CROSS_NS_OBSERVABILITY_ja.md §5.3 / §10.5.
+Subscribes to /_agnocast_discovery and exposes the collected messages plus a
+few small data classes the verb modules consume. Imports of the discovery
+msgs package are deferred so the CLI keeps working on older deployments
+where the discovery agent / msgs package isn't installed.
 """
 
 import time
@@ -13,13 +14,13 @@ from typing import Dict, List, Optional, Tuple
 DISCOVERY_TOPIC = '/_agnocast_discovery'
 DEFAULT_TIMEOUT_SEC = 2.0
 
-# Match the daemon's Liveliness lease (CROSS_NS_OBSERVABILITY_ja.md §10.3) so
-# the subscriber is QoS-compatible with the agent. Also used as the implicit
-# upper bound when computing stale-by-timestamp (default below).
+# Match the daemon's Liveliness lease so the subscriber is QoS-compatible
+# with it. Also acts as the implicit upper bound when computing
+# stale-by-timestamp.
 LIVELINESS_LEASE_SEC = 30.0
 
-# Default age (seconds) past which a daemon announcement is treated as stale
-# (CROSS_NS_OBSERVABILITY_ja.md §10.3). Override per call via include_stale.
+# Default age (seconds) past which a daemon announcement is treated as
+# stale. Override per call via include_stale.
 DEFAULT_STALE_AFTER_SEC = 10.0
 
 
@@ -82,8 +83,8 @@ def derive_node_topics_from_rows(rows):
     """From topic_info rows / discovery topics, group topics by node.
 
     Returns dict[node_name] -> {'pub': set(topics), 'sub': set(topics),
-    'is_bridge': bool}. Identical name across NS folds into one entry (same
-    convention used by ros2 standard CLI; see §10.5).
+    'is_bridge': bool}. Identical name across NS folds into one entry, the
+    same convention `ros2 node list` uses for plain ROS 2 nodes.
     """
     by_node = {}
     for row in rows:
@@ -173,8 +174,7 @@ def collect_announcements(
 
     By default, announcements whose `timestamp` is more than `stale_after_sec`
     behind the local clock are dropped. Set `include_stale=True` to keep them
-    (mirrors the `--include-stale` CLI flag from CROSS_NS_OBSERVABILITY_ja.md
-    §10.3).
+    (mirrors the `--include-stale` CLI flag).
     """
     msg_type = _import_msg()
     if msg_type is None:

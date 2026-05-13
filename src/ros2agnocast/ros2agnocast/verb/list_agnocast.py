@@ -149,8 +149,8 @@ class ListAgnocastVerb(VerbExtension):
 
             agnocast_topics = remove_service_topic(agnocast_topics)
 
-            # Layer 2: collect /_agnocast_discovery announcements from other
-            # ECUs (and our own daemon, if running). Adds topics that procfs
+            # Collect /_agnocast_discovery announcements from other ECUs
+            # (and our own daemon, if running). Adds topics that procfs
             # can't see because they live on a different host.
             timeout_sec = max(0.0, args.timeout_ms / 1000.0)
             announcements = _discovery.collect_announcements(

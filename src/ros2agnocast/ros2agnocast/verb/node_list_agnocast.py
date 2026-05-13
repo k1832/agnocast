@@ -93,8 +93,9 @@ class ListAgnocastVerb(VerbExtension):
             for topic in agnocast_topics:
                 agnocast_node_name = agnocast_node_name | get_node_name_set(topic)
 
-            # Cross-NS / cross-ECU: derive nodes directly from procfs rows and
-            # Layer 2 discovery announcements (see §2.3 goal #1).
+            # Cross-NS / cross-ECU: derive nodes directly from procfs rows
+            # and /_agnocast_discovery announcements so the listing matches
+            # the full ROS_DOMAIN_ID scope, not just the caller's IPC NS.
             cross_ns_rows = _discovery.parse_proc_topic_info()
             timeout_sec = max(0.0, args.timeout_ms / 1000.0)
             announcements = _discovery.collect_announcements(

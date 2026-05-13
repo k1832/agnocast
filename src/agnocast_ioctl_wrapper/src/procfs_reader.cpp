@@ -1,6 +1,6 @@
 // Reads /proc/agnocast/{topics,topic_info} to expose cross-NS Agnocast info
-// without requiring a new ioctl. Mirrors the *_all_ns API described in
-// CROSS_NS_OBSERVABILITY_ja.md §5.2.
+// without requiring a new ioctl. Exposes the *_all_ns wrapper API used by
+// the userspace CLI.
 
 #include "agnocast_ioctl.hpp"
 
@@ -19,7 +19,8 @@ constexpr const char * kProcTopics = "/proc/agnocast/topics";
 constexpr const char * kProcTopicInfo = "/proc/agnocast/topic_info";
 
 // Open a /proc/agnocast/* file, skipping leading comment ("# ...") lines.
-// Returns nullptr if the file is absent (old kmod, F3 not deployed) or unreadable.
+// Returns nullptr if the file is absent (older kmod without procfs entries)
+// or unreadable, so callers can fall back to the NS-scoped ioctl path.
 FILE * open_proc_file(const char * path)
 {
   FILE * fp = fopen(path, "r");

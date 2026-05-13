@@ -1,5 +1,5 @@
 [Unit]
-Description=Agnocast discovery agent (per-ECU, F3 preview)
+Description=Agnocast discovery agent (per-ECU)
 After=network.target
 
 [Service]
