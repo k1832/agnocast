@@ -12,6 +12,7 @@ def split_fqn(fqn):
     namespace, _, name = fqn.rpartition('/')
     return (namespace or '/'), name
 
+
 class TopicInfoRet(ctypes.Structure):
     _fields_ = [
         ("node_name", ctypes.c_char * 256),
