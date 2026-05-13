@@ -12,10 +12,12 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import rclpy
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import (
     DurabilityPolicy,
     HistoryPolicy,
+    LivelinessPolicy,
     QoSProfile,
     ReliabilityPolicy,
 )
@@ -31,6 +33,7 @@ DISCOVERY_TOPIC = '/_agnocast_discovery'
 
 POLL_INTERVAL_SEC = 1.0
 HEARTBEAT_INTERVAL_SEC = 10.0  # 0.1 Hz heartbeat
+LIVELINESS_LEASE_SEC = 30.0    # CROSS_NS_OBSERVABILITY_ja.md §10.3
 
 
 def read_machine_id() -> str:
@@ -128,6 +131,8 @@ class DiscoveryAgent(Node):
             history=HistoryPolicy.KEEP_LAST,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             reliability=ReliabilityPolicy.RELIABLE,
+            liveliness=LivelinessPolicy.AUTOMATIC,
+            liveliness_lease_duration=Duration(seconds=LIVELINESS_LEASE_SEC),
         )
         self._pub = self.create_publisher(AgnocastDaemonState, DISCOVERY_TOPIC, qos)
         self._last_signatures: Dict[int, tuple] = {}
