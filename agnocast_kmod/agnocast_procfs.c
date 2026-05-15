@@ -69,6 +69,11 @@ static bool seen_contains(
   return false;
 }
 
+// Per-read dedup cap. Autoware-class deployments reach ~600 live nodes per
+// ECU; 4096 keeps the temporary table to tens of KiB with room to grow.
+// Past the cap, rows are dropped and a `# truncated: ...` sentinel is
+// appended. Planned follow-up work moves reading to per-namespace readers
+// and retires this dedup entirely.
 #define MAX_SEEN_NODES 4096
 
 static int nodes_show(struct seq_file * s, void * v)
@@ -77,6 +82,7 @@ static int nodes_show(struct seq_file * s, void * v)
   int bkt_topic;
   struct seen_node * seen;
   size_t seen_count = 0;
+  bool truncated = false;
 
   seq_printf(s, "# schema_version=%u\n", AGNOCAST_PROC_SCHEMA_VERSION);
   seq_puts(s, "# ipc_ns_inode pid node_name\n");
@@ -86,12 +92,20 @@ static int nodes_show(struct seq_file * s, void * v)
 
   down_read(&global_htables_rwsem);
 
+  // Once the dedup table is full any further row could be a duplicate we can
+  // no longer detect; silent duplicates are worse than truncation, so bail
+  // out via `truncated` and emit a sentinel at the end. We short-circuit at
+  // every loop level (instead of `goto`) so the per-wrapper rwsem `up_read`
+  // below still runs.
   hash_for_each(topic_hashtable, bkt_topic, wrapper, node)
   {
     struct publisher_info * pub_info;
     struct subscriber_info * sub_info;
     int bkt;
-    unsigned int inum = ipc_ns_inode(wrapper->ipc_ns);
+    unsigned int inum;
+
+    if (truncated) break;
+    inum = ipc_ns_inode(wrapper->ipc_ns);
 
     down_read(&wrapper->topic_rwsem);
 
@@ -99,32 +113,42 @@ static int nodes_show(struct seq_file * s, void * v)
     {
       if (!pub_info->node_name) continue;
       if (seen_contains(seen, seen_count, inum, pub_info->pid, pub_info->node_name)) continue;
-      if (seen_count < MAX_SEEN_NODES) {
-        seen[seen_count].inum = inum;
-        seen[seen_count].pid = pub_info->pid;
-        seen[seen_count].node_name = pub_info->node_name;
-        seen_count++;
+      if (seen_count >= MAX_SEEN_NODES) {
+        truncated = true;
+        break;
       }
+      seen[seen_count].inum = inum;
+      seen[seen_count].pid = pub_info->pid;
+      seen[seen_count].node_name = pub_info->node_name;
+      seen_count++;
       seq_printf(s, "%u %d %s\n", inum, pub_info->pid, pub_info->node_name);
     }
 
-    hash_for_each(wrapper->topic.sub_info_htable, bkt, sub_info, node)
-    {
-      if (!sub_info->node_name) continue;
-      if (seen_contains(seen, seen_count, inum, sub_info->pid, sub_info->node_name)) continue;
-      if (seen_count < MAX_SEEN_NODES) {
+    if (!truncated) {
+      hash_for_each(wrapper->topic.sub_info_htable, bkt, sub_info, node)
+      {
+        if (!sub_info->node_name) continue;
+        if (seen_contains(seen, seen_count, inum, sub_info->pid, sub_info->node_name)) continue;
+        if (seen_count >= MAX_SEEN_NODES) {
+          truncated = true;
+          break;
+        }
         seen[seen_count].inum = inum;
         seen[seen_count].pid = sub_info->pid;
         seen[seen_count].node_name = sub_info->node_name;
         seen_count++;
+        seq_printf(s, "%u %d %s\n", inum, sub_info->pid, sub_info->node_name);
       }
-      seq_printf(s, "%u %d %s\n", inum, sub_info->pid, sub_info->node_name);
     }
 
     up_read(&wrapper->topic_rwsem);
   }
 
   up_read(&global_htables_rwsem);
+
+  if (truncated)
+    seq_printf(s, "# truncated: more than %u unique nodes\n", MAX_SEEN_NODES);
+
   kvfree(seen);
   return 0;
 }
