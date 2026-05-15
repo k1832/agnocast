@@ -21,8 +21,6 @@
 #   1 — prerequisite failure (kmod not loaded, workspace not built)
 #   2 — assertion failure (CLI output didn't match expectation)
 
-set -u
-
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 TOPIC_NAME=${TOPIC_NAME:-/my_topic}
 TALKER_NODE=${TALKER_NODE:-/talker_node}
@@ -55,6 +53,9 @@ if [ ! -f "$ROOT_DIR/install/setup.bash" ]; then
 fi
 # shellcheck disable=SC1091
 source "$ROOT_DIR/install/setup.bash"
+# Enable nounset *after* sourcing colcon's setup.bash — that file legitimately
+# references unset internal variables (e.g. $COLCON_TRACE).
+set -u
 green "✓ workspace sourced"
 
 # Verify procfs schema header
