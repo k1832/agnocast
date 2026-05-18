@@ -111,7 +111,10 @@ struct MqMsgDaemonBridge
 
 constexpr int64_t BRIDGE_MQ_MAX_MESSAGES = 2;
 constexpr int64_t PERFORMANCE_BRIDGE_MQ_MAX_MESSAGES = 256;
-constexpr int64_t DAEMON_BRIDGE_MQ_MAX_MESSAGES = 16;
+// Keep within the kernel default `/proc/sys/fs/mqueue/msg_max` (10) so the
+// MQ can be created without `CAP_SYS_RESOURCE`. The daemon retries each
+// tick, so a moderate depth is sufficient.
+constexpr int64_t DAEMON_BRIDGE_MQ_MAX_MESSAGES = 8;
 constexpr int64_t BRIDGE_MQ_MESSAGE_SIZE = sizeof(MqMsgBridge);
 constexpr int64_t PERFORMANCE_BRIDGE_MQ_MESSAGE_SIZE = sizeof(MqMsgPerformanceBridge);
 constexpr int64_t DAEMON_BRIDGE_MQ_MESSAGE_SIZE = sizeof(MqMsgDaemonBridge);
